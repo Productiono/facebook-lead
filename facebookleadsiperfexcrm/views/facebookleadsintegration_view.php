@@ -117,6 +117,10 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 			const subscribeLabel = '<?php echo htmlspecialchars(_l('fbleadssubscribe')); ?>';
 			const unsubscribeLabel = '<?php echo htmlspecialchars(_l('fbleadsunsubscribe')); ?>';
 
+			function getCsrfToken() {
+				return $('input[name="csrfToken"]').attr('value');
+			}
+
 			function showNotification(type, message) {
 				if (typeof alert_float === 'function') {
 					alert_float(type, message);
@@ -164,7 +168,8 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 					dataType: 'json',
 					data: {
 						id: id,
-						access_token: access_token
+						access_token: access_token,
+						CSRF: getCsrfToken()
 					},
 					success: function(resp) {
 						if (resp && resp.success) {
@@ -197,7 +202,8 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 					dataType: 'json',
 					data: {
 						id: page_id,
-						access_token: page_access_token
+						access_token: page_access_token,
+						CSRF: getCsrfToken()
 					},
 					success: function(resp) {
 						if (resp && resp.success) {
