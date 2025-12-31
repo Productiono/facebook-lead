@@ -84,7 +84,12 @@ class Facebook_Client
     public function subscribe_page(string $page_id, string $page_token): bool
     {
         $url = 'https://graph.facebook.com/' . $this->graph_version . '/' . rawurlencode($page_id) . '/subscribed_apps';
-        $response = wp_remote_post($url, ['body' => ['access_token' => $page_token]]);
+        $response = wp_remote_post($url, [
+            'body' => [
+                'access_token' => $page_token,
+                'subscribed_fields' => 'leadgen',
+            ],
+        ]);
         if (is_wp_error($response)) {
             $this->logger->log('Page subscribe failed', ['page' => $page_id, 'error' => $response->get_error_message()]);
             return false;
