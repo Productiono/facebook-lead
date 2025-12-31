@@ -17,6 +17,15 @@ define('FLFBL_PATH', plugin_dir_path(__FILE__));
 define('FLFBL_URL', plugin_dir_url(__FILE__));
 define('FLFBL_VERSION', '1.0.0');
 
+if (!function_exists('flfbl_is_fluentcrm_active')) {
+    function flfbl_is_fluentcrm_active(): bool
+    {
+        return function_exists('fluentcrm')
+            || defined('FLUENTCRM')
+            || class_exists('\\FluentCrm\\App\\Models\\Subscriber');
+    }
+}
+
 require_once FLFBL_PATH . 'includes/class-settings.php';
 require_once FLFBL_PATH . 'includes/class-logger.php';
 require_once FLFBL_PATH . 'includes/class-facebook-client.php';
@@ -26,7 +35,7 @@ require_once FLFBL_PATH . 'includes/class-webhook-controller.php';
 require_once FLFBL_PATH . 'includes/class-plugin.php';
 
 add_action('plugins_loaded', static function () {
-    if (!function_exists('fluentcrm')) {
+    if (!flfbl_is_fluentcrm_active()) {
         add_action('admin_notices', static function () {
             echo '<div class="notice notice-error"><p>FluentCRM must be active for Facebook Lead Ads for FluentCRM.</p></div>';
         });
