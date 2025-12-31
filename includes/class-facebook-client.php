@@ -116,15 +116,16 @@ class Facebook_Client
         return false;
     }
 
-    public function fetch_lead(string $lead_id): ?array
+    public function fetch_lead(string $lead_id, ?string $token = null): ?array
     {
-        $token = $this->settings->get('long_lived_token');
-        if (!$token) {
+        $access_token = $token ?: $this->settings->get('long_lived_token');
+        if (!$access_token) {
+            $this->logger->log('Lead fetch skipped, missing access token', ['lead' => $lead_id]);
             return null;
         }
         $url = add_query_arg(
             [
-                'access_token' => $token,
+                'access_token' => $access_token,
             ],
             'https://graph.facebook.com/' . $this->graph_version . '/' . rawurlencode($lead_id)
         );
