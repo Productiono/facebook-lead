@@ -116,9 +116,12 @@ class Facebook_Client
         return false;
     }
 
-    public function fetch_lead(string $lead_id): ?array
+    public function fetch_lead(string $lead_id, ?string $page_id = null): ?array
     {
-        $token = $this->settings->get('long_lived_token');
+        $token = $this->get_page_token($page_id);
+        if (!$token) {
+            $token = $this->settings->get('long_lived_token');
+        }
         if (!$token) {
             return null;
         }
@@ -138,6 +141,21 @@ class Facebook_Client
             return $body;
         }
         $this->logger->log('Lead fetch error', ['lead' => $lead_id, 'response' => $body]);
+        return null;
+    }
+
+    private function get_page_token(?string $page_id): ?string
+    {
+        if (!$page_id) {
+            return null;
+        }
+        $pages = $this->settings->get('pages', []);
+        foreach ($pages as $page) {
+            if (!empty($page['id']) && (string) $page['id'] === (string) $page_id && !empty($page['access_token'])) {
+                return $page['access_token'];
+            }
+        }
+        $this->logger->log('Lead page token missing', ['page' => $page_id]);
         return null;
     }
 }

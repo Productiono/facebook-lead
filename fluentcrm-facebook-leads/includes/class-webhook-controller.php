@@ -56,12 +56,37 @@ class Webhook_Controller
 
     public function receive(WP_REST_Request $request): WP_REST_Response
     {
-        $payload = $request->get_json_params();
-        if (!$payload) {
-            $this->logger->log('Webhook empty payload');
+        $raw_body = $request->get_body();
+        if (!$this->is_valid_signature($request, $raw_body)) {
+            return new WP_REST_Response(['status' => 'forbidden'], 403);
+        }
+        $payload = json_decode($raw_body, true);
+        if (!is_array($payload)) {
+            $this->logger->log('Webhook invalid payload', ['body' => $raw_body]);
             return new WP_REST_Response(['status' => 'ignored'], 400);
         }
         $this->processor->handle_webhook($payload);
         return new WP_REST_Response(['status' => 'ok'], 200);
+    }
+
+    private function is_valid_signature(WP_REST_Request $request, string $raw_body): bool
+    {
+        $app_secret = $this->settings->get('app_secret');
+        $signature = $request->get_header('x-hub-signature-256');
+        $algorithm = 'sha256';
+        if (!$signature) {
+            $signature = $request->get_header('x-hub-signature');
+            $algorithm = 'sha1';
+        }
+        if (!$app_secret || !$raw_body || !$signature) {
+            $this->logger->log('Webhook missing signature data');
+            return false;
+        }
+        $expected = $algorithm . '=' . hash_hmac($algorithm, $raw_body, $app_secret);
+        if (!hash_equals($expected, $signature)) {
+            $this->logger->log('Webhook signature mismatch', ['received' => $signature]);
+            return false;
+        }
+        return true;
     }
 }
