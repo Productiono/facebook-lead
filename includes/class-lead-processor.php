@@ -32,8 +32,11 @@ class Lead_Processor
             return;
         }
         $lead_id = (string) $payload['entry'][0]['changes'][0]['value']['leadgen_id'];
-        $lead = $this->client->fetch_lead($lead_id);
+        $page_id = !empty($payload['entry'][0]['id']) ? (string) $payload['entry'][0]['id'] : '';
+        $page_token = $this->get_page_token($page_id);
+        $lead = $this->client->fetch_lead($lead_id, $page_token);
         if (!$lead) {
+            $this->logger->log('Lead fetch failed', ['lead_id' => $lead_id, 'page_id' => $page_id]);
             return;
         }
         $this->process_lead($lead);
@@ -191,5 +194,19 @@ class Lead_Processor
                 ]
             );
         }
+    }
+
+    private function get_page_token(string $page_id): ?string
+    {
+        if (!$page_id) {
+            return null;
+        }
+        $pages = (array) $this->settings->get('pages', []);
+        foreach ($pages as $page) {
+            if (!empty($page['id']) && $page['id'] === $page_id && !empty($page['access_token'])) {
+                return (string) $page['access_token'];
+            }
+        }
+        return null;
     }
 }
