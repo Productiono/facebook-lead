@@ -15,6 +15,7 @@ class Admin
     private Facebook_Client $client;
     private Lead_Processor $processor;
     private Logger $logger;
+    private string $notice_key = 'flfbl_notices';
 
     public function __construct(Settings $settings, Facebook_Client $client, Lead_Processor $processor, Logger $logger)
     {
@@ -53,6 +54,7 @@ class Admin
         if (!current_user_can('manage_options')) {
             return;
         }
+        $this->hydrate_notices();
         $settings = $this->settings->all();
         $tags = Tag::orderBy('title', 'ASC')->get()->toArray();
         $lists = Lists::orderBy('title', 'ASC')->get()->toArray();
@@ -78,7 +80,6 @@ class Admin
                 $reverse[$target] = $fb;
             }
         }
-        settings_errors('flfbl');
         ?>
         <div class="wrap">
             <h1>Facebook Lead Ads for FluentCRM</h1>
@@ -258,10 +259,19 @@ class Admin
                     e.preventDefault();
                     tabs.forEach(function(t){ t.classList.remove('nav-tab-active'); });
                     sections.forEach(function(s){ s.style.display = 'none'; });
+                    const target = tab.getAttribute('href');
                     tab.classList.add('nav-tab-active');
-                    document.querySelector(tab.getAttribute('href')).style.display = 'block';
+                    document.querySelector(target).style.display = 'block';
+                    if (history.replaceState) {
+                        history.replaceState(null, '', target);
+                    } else {
+                        window.location.hash = target;
+                    }
                 });
             });
+            const initial = window.location.hash || '#credentials';
+            const activeTab = document.querySelector('.nav-tab[href="' + initial + '"]') || tabs[0];
+            activeTab.dispatchEvent(new Event('click'));
         })();
         </script>
         <?php
@@ -280,8 +290,8 @@ class Admin
             'app_secret' => $app_secret,
             'verify_token' => $verify_token,
         ]);
-        add_settings_error('flfbl', 'credentials_saved', 'Credentials saved.', 'updated');
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#credentials'));
+        $this->add_notice('credentials_saved', 'Credentials saved.', 'updated');
+        wp_safe_redirect($this->page_url('#credentials'));
         exit;
     }
 
@@ -296,9 +306,9 @@ class Admin
             $exchanged = $this->client->exchange_token($user_token);
             if ($exchanged) {
                 $long_lived = $exchanged;
-                add_settings_error('flfbl', 'token_exchanged', 'Long-lived token generated.', 'updated');
+                $this->add_notice('token_exchanged', 'Long-lived token generated.', 'updated');
             } else {
-                add_settings_error('flfbl', 'token_failed', 'Unable to exchange token.', 'error');
+                $this->add_notice('token_failed', 'Unable to exchange token.', 'error');
             }
         }
         $this->settings->update([
@@ -322,7 +332,7 @@ class Admin
                 $this->settings->update(['pages' => array_values($existing)]);
             }
         }
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#credentials'));
+        wp_safe_redirect($this->page_url('#credentials'));
         exit;
     }
 
@@ -360,8 +370,8 @@ class Admin
             'list_ids' => $list_ids,
             'status' => $status,
         ]);
-        add_settings_error('flfbl', 'mapping_saved', 'Mapping saved.', 'updated');
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#field-mapping'));
+        $this->add_notice('mapping_saved', 'Mapping saved.', 'updated');
+        wp_safe_redirect($this->page_url('#field-mapping'));
         exit;
     }
 
@@ -371,6 +381,11 @@ class Admin
             wp_die('Unauthorized');
         }
         $page_id = isset($_POST['page_id']) ? sanitize_text_field(wp_unslash($_POST['page_id'])) : '';
+        if (!$page_id) {
+            $this->add_notice('missing_page', 'Invalid page selection.', 'error');
+            wp_safe_redirect($this->page_url('#pages'));
+            exit;
+        }
         $pages = $this->settings->get('pages', []);
         $page_token = '';
         foreach ($pages as $page) {
@@ -379,6 +394,11 @@ class Admin
                 break;
             }
         }
+        if (!$page_token) {
+            $this->add_notice('missing_page_token', 'Page token not found. Refresh pages and try again.', 'error');
+            wp_safe_redirect($this->page_url('#pages'));
+            exit;
+        }
         if ($page_token && $this->client->subscribe_page($page_id, $page_token)) {
             foreach ($pages as &$page) {
                 if ($page['id'] === $page_id) {
@@ -386,11 +406,11 @@ class Admin
                 }
             }
             $this->settings->update(['pages' => $pages]);
-            add_settings_error('flfbl', 'subscribed', 'Page subscribed.', 'updated');
+            $this->add_notice('subscribed', 'Page subscribed.', 'updated');
         } else {
-            add_settings_error('flfbl', 'subscribe_failed', 'Subscription failed.', 'error');
+            $this->add_notice('subscribe_failed', 'Subscription failed.', 'error');
         }
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#pages'));
+        wp_safe_redirect($this->page_url('#pages'));
         exit;
     }
 
@@ -400,6 +420,11 @@ class Admin
             wp_die('Unauthorized');
         }
         $page_id = isset($_POST['page_id']) ? sanitize_text_field(wp_unslash($_POST['page_id'])) : '';
+        if (!$page_id) {
+            $this->add_notice('missing_page', 'Invalid page selection.', 'error');
+            wp_safe_redirect($this->page_url('#pages'));
+            exit;
+        }
         $pages = $this->settings->get('pages', []);
         $page_token = '';
         foreach ($pages as $page) {
@@ -408,6 +433,11 @@ class Admin
                 break;
             }
         }
+        if (!$page_token) {
+            $this->add_notice('missing_page_token', 'Page token not found. Refresh pages and try again.', 'error');
+            wp_safe_redirect($this->page_url('#pages'));
+            exit;
+        }
         if ($page_token && $this->client->unsubscribe_page($page_id, $page_token)) {
             foreach ($pages as &$page) {
                 if ($page['id'] === $page_id) {
@@ -415,11 +445,11 @@ class Admin
                 }
             }
             $this->settings->update(['pages' => $pages]);
-            add_settings_error('flfbl', 'unsubscribed', 'Page unsubscribed.', 'updated');
+            $this->add_notice('unsubscribed', 'Page unsubscribed.', 'updated');
         } else {
-            add_settings_error('flfbl', 'unsubscribe_failed', 'Unsubscribe failed.', 'error');
+            $this->add_notice('unsubscribe_failed', 'Unsubscribe failed.', 'error');
         }
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#pages'));
+        wp_safe_redirect($this->page_url('#pages'));
         exit;
     }
 
@@ -430,8 +460,8 @@ class Admin
         }
         $token = $this->settings->get('long_lived_token');
         if (!$token) {
-            add_settings_error('flfbl', 'no_token', 'Set a long-lived token first.', 'error');
-            wp_safe_redirect(admin_url('admin.php?page=flfbl#pages'));
+            $this->add_notice('no_token', 'Set a long-lived token first.', 'error');
+            wp_safe_redirect($this->page_url('#pages'));
             exit;
         }
         $pages = $this->client->fetch_pages($token);
@@ -448,11 +478,45 @@ class Admin
                 $existing[$page['id']] = $page;
             }
             $this->settings->update(['pages' => array_values($existing)]);
-            add_settings_error('flfbl', 'pages_refreshed', 'Pages refreshed.', 'updated');
+            $this->add_notice('pages_refreshed', 'Pages refreshed.', 'updated');
         } else {
-            add_settings_error('flfbl', 'pages_failed', 'Unable to fetch pages.', 'error');
+            $this->add_notice('pages_failed', 'Unable to fetch pages.', 'error');
         }
-        wp_safe_redirect(admin_url('admin.php?page=flfbl#pages'));
+        wp_safe_redirect($this->page_url('#pages'));
         exit;
+    }
+
+    private function add_notice(string $code, string $message, string $type = 'updated'): void
+    {
+        add_settings_error('flfbl', $code, $message, $type);
+        $notices = get_transient($this->notice_key);
+        if (!is_array($notices)) {
+            $notices = [];
+        }
+        $notices[] = [
+            'code' => $code,
+            'message' => $message,
+            'type' => $type,
+        ];
+        set_transient($this->notice_key, $notices, MINUTE_IN_SECONDS);
+    }
+
+    private function hydrate_notices(): void
+    {
+        $notices = get_transient($this->notice_key);
+        if (is_array($notices)) {
+            foreach ($notices as $notice) {
+                if (isset($notice['code'], $notice['message'], $notice['type'])) {
+                    add_settings_error('flfbl', $notice['code'], $notice['message'], $notice['type']);
+                }
+            }
+            delete_transient($this->notice_key);
+        }
+        settings_errors('flfbl');
+    }
+
+    private function page_url(string $hash = ''): string
+    {
+        return admin_url('admin.php?page=flfbl') . $hash;
     }
 }
