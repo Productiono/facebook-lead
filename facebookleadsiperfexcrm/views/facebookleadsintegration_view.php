@@ -98,7 +98,13 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 		</div>
 		<br>
 		<p><?php echo htmlspecialchars(_l('webhook_callback_url')); ?></p>
-		<input type="text" id="settings[webhookurl]" name="webhookurl" class="form-control" disabled value="<?php echo htmlspecialchars(base_url()); ?>facebookleadsintegration/webhook">
+		<div class="input-group">
+			<input type="text" id="facebook-webhook-url" name="webhookurl" class="form-control" readonly value="<?php echo htmlspecialchars(base_url()); ?>facebookleadsintegration/webhook">
+			<span class="input-group-btn">
+				<button type="button" class="btn btn-default" onclick="copyWebhookUrl()"><?php echo htmlspecialchars(_l('copy') ?? 'Copy'); ?></button>
+			</span>
+		</div>
+		<small class="text-muted"><?php echo htmlspecialchars(_l('use_this_url_to_configure_facebook_webhook') ?? 'Use this URL in your Facebook App webhook configuration.'); ?></small>
 
 		<hr />
 		<br>
@@ -106,40 +112,124 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 		<br>
 		<!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script> -->
 		<script>
-			// $.ajax({
-			// 	url: 'facebookleadsintegration/getTable',
-			// 	success: function(resp) {
-			// 		$('#list').html(resp);
-			// 	},
-			// 	error: function() {
-			// 		console.log('something went wrong');
-			// 	}
-			// });
+			const subscribeEndpoint = '<?php echo admin_url('facebookleadsintegration/subscribePage'); ?>';
+			const unsubscribeEndpoint = '<?php echo admin_url('facebookleadsintegration/unsubscribePage'); ?>';
+			const subscribeLabel = '<?php echo htmlspecialchars(_l('fbleadssubscribe')); ?>';
+			const unsubscribeLabel = '<?php echo htmlspecialchars(_l('fbleadsunsubscribe')); ?>';
 
+			function showNotification(type, message) {
+				if (typeof alert_float === 'function') {
+					alert_float(type, message);
+				} else {
+					console.log(type, message);
+				}
+			}
 
+			function toggleButtonLoading($button, loading) {
+				if (loading) {
+					$button.data('original-text', $button.val());
+					$button.prop('disabled', true).val('Please wait...');
+				} else {
+					var originalText = $button.data('original-text');
+					if (originalText) {
+						$button.val(originalText);
+					}
+					$button.prop('disabled', false);
+				}
+			}
 
+			function setSubscribedState(page_id, page_access_token) {
+				$("#" + page_id)
+					.attr("onclick", "unsubscribeApps(" + page_id + ",'" + page_access_token + "')")
+					.attr("value", unsubscribeLabel)
+					.removeClass("btn-info")
+					.addClass('btn-danger');
+			}
+
+			function setUnsubscribedState(page_id, page_access_token) {
+				$("#" + page_id)
+					.attr("onclick", "subscribe(" + page_id + ",'" + page_access_token + "')")
+					.attr("value", subscribeLabel)
+					.removeClass("btn-danger")
+					.addClass('btn-info');
+			}
 
 			function subscribe(id, access_token) {
-
-				subscribeApp(id, access_token);
-				var token = $('input[name="csrfToken"]').attr('value');
+				var $button = $('#' + id);
+				toggleButtonLoading($button, true);
 
 				$.ajax({
-					url: 'facebookleadsintegration/pageSubscribed',
+					url: subscribeEndpoint,
 					type: 'POST',
+					dataType: 'json',
 					data: {
 						id: id,
-						CSRF: token
+						access_token: access_token
 					},
 					success: function(resp) {
-						console.log('page #' + id + ' Subscribed and Stored');
+						if (resp && resp.success) {
+							setSubscribedState(id, access_token);
+							if (resp.webhook_url) {
+								$('#facebook-webhook-url').val(resp.webhook_url);
+							}
+							showNotification('success', resp.message || 'Subscribed successfully.');
+						} else {
+							showNotification('danger', (resp && resp.message) ? resp.message : 'Unable to subscribe this page.');
+						}
 					},
-					error: function() {
-						console.log('something went wrong');
+					error: function(xhr) {
+						var message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Unable to subscribe this page.';
+						showNotification('danger', message);
+					},
+					complete: function() {
+						toggleButtonLoading($button, false);
 					}
-
-
 				});
+			}
+
+			function unsubscribeApps(page_id, page_access_token) {
+				var $button = $('#' + page_id);
+				toggleButtonLoading($button, true);
+
+				$.ajax({
+					url: unsubscribeEndpoint,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						id: page_id,
+						access_token: page_access_token
+					},
+					success: function(resp) {
+						if (resp && resp.success) {
+							setUnsubscribedState(page_id, page_access_token);
+							showNotification('success', resp.message || 'Unsubscribed successfully.');
+						} else {
+							showNotification('danger', (resp && resp.message) ? resp.message : 'Unable to unsubscribe this page.');
+						}
+					},
+					error: function(xhr) {
+						var message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Unable to unsubscribe this page.';
+						showNotification('danger', message);
+					},
+					complete: function() {
+						toggleButtonLoading($button, false);
+					}
+				});
+			}
+
+			function copyWebhookUrl() {
+				var webhookInput = document.getElementById('facebook-webhook-url');
+				if (!webhookInput) {
+					return;
+				}
+				webhookInput.select();
+				webhookInput.setSelectionRange(0, 99999);
+				try {
+					document.execCommand('copy');
+					showNotification('success', 'Webhook URL copied to clipboard.');
+				} catch (e) {
+					showNotification('danger', 'Unable to copy webhook URL. Please copy it manually.');
+				}
 			}
 
 			window.fbAsyncInit = function() {
@@ -160,69 +250,6 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 				js.src = "//connect.facebook.net/en_US/sdk.js";
 				fjs.parentNode.insertBefore(js, fjs);
 			}(document, 'script', 'facebook-jssdk'));
-
-
-			function subscribeApp(page_id, page_access_token) {
-				console.log('Subscribed Page to FB Leads Live Update ' + page_id);
-				FB.api('/' + page_id + '/subscribed_apps',
-					'post', {
-						access_token: page_access_token,
-						subscribed_fields: 'leadgen'
-					},
-					function(response) {
-						// $('#' + page_id).attr("disabled", true);
-						var unsubscribe = '<?php echo htmlspecialchars(_l('fbleadsunsubscribe')); ?>';
-						$("#" + page_id).attr("onclick", "unsubscribeApps(" + page_id + ",'" + page_access_token + "')");
-						$('#' + page_id).attr("value", unsubscribe);
-						$('#' + page_id).removeClass("btn-info").addClass('btn-danger');
-
-						console.log('Successfully subscribed page', response);
-					});
-
-			}
-
-			function unsubscribeApps(page_id, page_access_token) {
-
-
-
-				console.log('Unsubscribing app from page! ' + page_id);
-				FB.api(
-					'/' + page_id + '/subscribed_apps',
-					'delete', {
-						access_token: page_access_token
-					},
-					function(response) {
-						console.log('Successfully unsubscribed page', response);
-
-						var token = $('input[name="csrfToken"]').attr('value');
-
-						$.ajax({
-							url: 'facebookleadsintegration/pageUnSubscribed',
-							type: 'POST',
-							data: {
-								id: page_id,
-								CSRF: token
-							},
-							success: function(resp) {
-								console.log('page #' + page_id + ' Un Subscribed and Excluded');
-							},
-							error: function() {
-								console.log('something went wrong');
-							}
-
-
-						});
-						var subscribe = '<?php echo htmlspecialchars(_l('fbleadssubscribe')); ?>';
-						$("#" + page_id).attr("onclick", "subscribe(" + page_id + ",'" + page_access_token + "')");
-						$('#' + page_id).attr("value", subscribe);
-						$('#' + page_id).removeClass("btn-danger").addClass('btn-info');
-
-
-					}
-				);
-
-
-			}
 
 			function checkLoginState() {
 				FB.getLoginStatus(function(response) {
@@ -336,10 +363,11 @@ defined('BASEPATH') or exit('No direct script access allowed'); ?>
 				if(get_option('facebook_pages'))
 				{
 					$pages = json_decode(get_option('facebook_pages')) ;
+					$subscribed_pages = json_decode(get_option('subscribed_pages')) ?: [];
 					$flag=0;
 					$html = '<table class="table table-striped" id="pageTable"><thead><tr><th>' . _l('page_name') . '</th><th>' . _l('action').'</th></tr></thead><tbody>';
 					foreach ($pages as $page) {
-						if (in_array($page->id . get_option('appId'), json_decode(get_option('subscribed_pages')))) {
+						if (in_array($page->id . get_option('appId'), $subscribed_pages)) {
 							$html .= '<tr> <td>' . $page->name . '</td> <td><input type="button" value="' . _l('fbleadsunsubscribe') . '" id="' . $page->id . '" onclick="unsubscribeApps (' . $page->id . ',\'' . $page->access_token . '\');" class="btn btn-danger"></td> </tr>';
 							$flag=1;
 						} 

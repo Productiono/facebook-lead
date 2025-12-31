@@ -1,6 +1,8 @@
 <?php
 
 use function GuzzleHttp\json_decode;
+use Facebook\Exceptions\FacebookResponseException;
+use Facebook\Exceptions\FacebookSDKException;
 
 defined('BASEPATH') or exit('No direct script access allowed');
 set_time_limit(0);
@@ -39,6 +41,10 @@ class Facebookleadsintegration extends ClientsController
     {
 		
         $pages = $_POST['pages'];
+        $subscribedPages = json_decode(get_option('subscribed_pages'), true);
+        if (!is_array($subscribedPages)) {
+            $subscribedPages = [];
+        }
 
          update_option('facebook_pages',json_encode($pages));
         $html = '<table class="table table-striped" id="pageTable">
@@ -50,7 +56,7 @@ class Facebookleadsintegration extends ClientsController
         </thead>
         <tbody>';
         foreach ($pages as $page) {
-            if (!in_array($page['id'] . get_option('appId'), json_decode(get_option('subscribed_pages')))) {
+            if (!in_array($page['id'] . get_option('appId'), $subscribedPages)) {
                
                 $html .= '<tr> <td>' . $page["name"] . '</td> <td><input type="button" value="' . _l('fbleadssubscribe') . '" id="' . $page['id'] . '" onclick="subscribe (' . $page['id'] . ',\'' . $page["access_token"] . '\');" class="btn btn-info"></td> </tr>';
                 
@@ -141,34 +147,28 @@ class Facebookleadsintegration extends ClientsController
     {
 		\modules\facebookleadsintegration\core\Apiinit::ease_of_mind('facebookleadsintegration');
 		\modules\facebookleadsintegration\core\Apiinit::the_da_vinci_code('facebookleadsintegration');
-        $pages = json_decode(get_option('subscribed_pages'));
-        $page_id = $_POST['id'];
+        $pages = $this->getSubscribedPages();
+        $page_id = $this->input->post('id');
         $app_id = get_option('appId');
-        // $page=$pages[]
-        array_push($pages, $page_id . $app_id);
-        update_option('subscribed_pages', json_encode($pages));
+        if (!in_array($page_id . $app_id, $pages)) {
+            $pages[] = $page_id . $app_id;
+            $this->storeSubscribedPages($pages);
+        }
         print_r(json_encode($pages));
     }
     // Exclude pages id which are Unsubscribed 
     public function pageUnSubscribed()
     {
 
-        $pages = json_decode(get_option('subscribed_pages'));
-        $page_id = $_POST['id'];
+        $pages = $this->getSubscribedPages();
+        $page_id = $this->input->post('id');
         $app_id = get_option('appId');
 
 
         $pages = array_diff($pages, [$page_id . $app_id]);
-        $new_pages = array();
-        foreach ($pages as $page) {
+        $new_pages = array_values($pages);
 
-            if ($page != $page_id . $app_id) {
-                array_push($new_pages, $page);
-            }
-        }
-
-
-        update_option('subscribed_pages', json_encode($new_pages));
+        $this->storeSubscribedPages($new_pages);
         print_r(json_encode($new_pages));
     }
     // Save and update Long live Facebook access token
@@ -241,5 +241,106 @@ class Facebookleadsintegration extends ClientsController
         } else {
             update_option('facebook_lead_status', $view_status);
         }
+    }
+
+    public function subscribePage()
+    {
+        \modules\facebookleadsintegration\core\Apiinit::ease_of_mind('facebookleadsintegration');
+        \modules\facebookleadsintegration\core\Apiinit::the_da_vinci_code('facebookleadsintegration');
+        $pageId = $this->input->post('id');
+        $pageAccessToken = $this->input->post('access_token');
+        if (empty($pageId) || empty($pageAccessToken)) {
+            return $this->jsonResponse(false, 'Page information is missing.');
+        }
+        try {
+            $fb = $this->getFacebookClient();
+            $fb->post('/' . $pageId . '/subscribed_apps', [
+                'subscribed_fields' => ['leadgen'],
+            ], $pageAccessToken);
+        } catch (FacebookResponseException $e) {
+            return $this->jsonResponse(false, 'Facebook returned an error while subscribing the page: ' . $e->getMessage());
+        } catch (FacebookSDKException $e) {
+            return $this->jsonResponse(false, 'Facebook SDK threw an error while subscribing the page: ' . $e->getMessage());
+        }
+
+        $pages = $this->getSubscribedPages();
+        $appId = get_option('appId');
+        if (!in_array($pageId . $appId, $pages)) {
+            $pages[] = $pageId . $appId;
+            $this->storeSubscribedPages($pages);
+        }
+
+        return $this->jsonResponse(true, 'Page subscribed successfully.', [
+            'webhook_url' => site_url('facebookleadsintegration/webhook'),
+            'subscribed_pages' => $pages,
+        ]);
+    }
+
+    public function unsubscribePage()
+    {
+        \modules\facebookleadsintegration\core\Apiinit::ease_of_mind('facebookleadsintegration');
+        \modules\facebookleadsintegration\core\Apiinit::the_da_vinci_code('facebookleadsintegration');
+        $pageId = $this->input->post('id');
+        $pageAccessToken = $this->input->post('access_token');
+        if (empty($pageId) || empty($pageAccessToken)) {
+            return $this->jsonResponse(false, 'Page information is missing.');
+        }
+
+        try {
+            $fb = $this->getFacebookClient();
+            $fb->delete('/' . $pageId . '/subscribed_apps', [], $pageAccessToken);
+        } catch (FacebookResponseException $e) {
+            return $this->jsonResponse(false, 'Facebook returned an error while unsubscribing the page: ' . $e->getMessage());
+        } catch (FacebookSDKException $e) {
+            return $this->jsonResponse(false, 'Facebook SDK threw an error while unsubscribing the page: ' . $e->getMessage());
+        }
+
+        $pages = $this->getSubscribedPages();
+        $appId = get_option('appId');
+        $pages = array_diff($pages, [$pageId . $appId]);
+        $newPages = array_values($pages);
+        $this->storeSubscribedPages($newPages);
+
+        return $this->jsonResponse(true, 'Page unsubscribed successfully.', [
+            'subscribed_pages' => $newPages,
+        ]);
+    }
+
+    private function jsonResponse($success, $message, $extra = [])
+    {
+        $payload = array_merge([
+            'success' => $success,
+            'message' => $message,
+        ], $extra);
+
+        return $this->output
+            ->set_content_type('application/json')
+            ->set_output(json_encode($payload));
+    }
+
+    private function getFacebookClient()
+    {
+        require_once APP_MODULES_PATH . 'facebookleadsintegration/src/Facebook/autoload.php';
+
+        return new \Facebook\Facebook([
+            'app_id' => get_option('appId'),
+            'app_secret' => get_option('appSecret'),
+            'default_graph_version' => 'v5.0',
+        ]);
+    }
+
+    private function getSubscribedPages()
+    {
+        $pages = json_decode(get_option('subscribed_pages'), true);
+        if (!is_array($pages)) {
+            $pages = [];
+        }
+
+        return $pages;
+    }
+
+    private function storeSubscribedPages($pages)
+    {
+        update_option('subscribed_pages', json_encode(array_values($pages)));
     }
 }
