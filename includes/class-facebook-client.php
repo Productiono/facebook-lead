@@ -130,6 +130,7 @@ class Facebook_Client
         }
         $url = add_query_arg(
             [
+                'fields' => 'field_data,form_id,ad_id,adset_id,campaign_id,created_time,platform',
                 'access_token' => $access_token,
             ],
             'https://graph.facebook.com/' . $this->graph_version . '/' . rawurlencode($lead_id)
