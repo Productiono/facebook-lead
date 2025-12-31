@@ -32,7 +32,8 @@ class Lead_Processor
             return;
         }
         $lead_id = (string) $payload['entry'][0]['changes'][0]['value']['leadgen_id'];
-        $lead = $this->client->fetch_lead($lead_id);
+        $page_id = $payload['entry'][0]['changes'][0]['value']['page_id'] ?? null;
+        $lead = $this->client->fetch_lead($lead_id, $page_id ? (string) $page_id : null);
         if (!$lead) {
             return;
         }
