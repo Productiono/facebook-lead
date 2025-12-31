@@ -49,7 +49,7 @@ class Webhook_Controller
         $mode = $request->get_param('hub.mode');
         $token = $request->get_param('hub.verify_token');
         $challenge = $request->get_param('hub.challenge');
-        if ($mode === 'subscribe' && $token === FLFBL_VERIFY_TOKEN && $challenge !== null) {
+        if ($mode === 'subscribe' && $token === $this->settings->get('verify_token')) {
             status_header(200);
             header('Content-Type: text/plain; charset=' . get_option('blog_charset'));
             echo $challenge;
