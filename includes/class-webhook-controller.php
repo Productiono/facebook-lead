@@ -27,7 +27,7 @@ class Webhook_Controller
     public function register_routes(): void
     {
         register_rest_route(
-            'flfbl/v1',
+            'fb-leads/v1',
             '/webhook',
             [
                 [
@@ -46,12 +46,16 @@ class Webhook_Controller
 
     public function verify(WP_REST_Request $request): WP_REST_Response
     {
-        $challenge = $request->get_param('hub.challenge') ?? $request->get_param('hub_challenge');
-        $token = $request->get_param('hub.verify_token') ?? $request->get_param('hub_verify_token');
-        if ($challenge && $token && $token === $this->settings->get('verify_token')) {
-            return new WP_REST_Response($challenge, 200);
+        $mode = $request->get_param('hub.mode');
+        $token = $request->get_param('hub.verify_token');
+        $challenge = $request->get_param('hub.challenge');
+        if ($mode === 'subscribe' && $token === FLFBL_VERIFY_TOKEN && $challenge !== null) {
+            status_header(200);
+            header('Content-Type: text/plain; charset=' . get_option('blog_charset'));
+            echo $challenge;
+            exit;
         }
-        return new WP_REST_Response('Invalid token', 403);
+        return new WP_REST_Response(null, 403);
     }
 
     public function receive(WP_REST_Request $request): WP_REST_Response

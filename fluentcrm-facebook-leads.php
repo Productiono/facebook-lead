@@ -17,6 +17,10 @@ define('FLFBL_PATH', plugin_dir_path(__FILE__));
 define('FLFBL_URL', plugin_dir_url(__FILE__));
 define('FLFBL_VERSION', '1.0.0');
 
+if (!defined('FLFBL_VERIFY_TOKEN')) {
+    define('FLFBL_VERIFY_TOKEN', 'VERIFY_TOKEN');
+}
+
 if (!function_exists('flfbl_is_fluentcrm_active')) {
     function flfbl_is_fluentcrm_active(): bool
     {
