@@ -46,8 +46,8 @@ class Webhook_Controller
 
     public function verify(WP_REST_Request $request): WP_REST_Response
     {
-        $challenge = $request->get_param('hub_challenge');
-        $token = $request->get_param('hub_verify_token');
+        $challenge = $request->get_param('hub.challenge') ?? $request->get_param('hub_challenge');
+        $token = $request->get_param('hub.verify_token') ?? $request->get_param('hub_verify_token');
         if ($challenge && $token && $token === $this->settings->get('verify_token')) {
             return new WP_REST_Response($challenge, 200);
         }
